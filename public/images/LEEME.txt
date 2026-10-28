@@ -1,0 +1,7 @@
+Imagen fija (póster) del banner principal
+=========================================
+
+mascota-celunorte-poster.webp es el primer fotograma del video del banner, con el mismo recorte 3:4 (540×720).
+
+Se muestra mientras carga el video, en celulares con ahorro de datos y cuando el sistema pide reducir movimiento.
+Para regenerarlo, ver README.md → "Video del banner".

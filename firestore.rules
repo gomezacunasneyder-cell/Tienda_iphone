@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // El rol se asigna con custom claims desde el servidor (Admin SDK); el cliente no puede cambiarlo.
+    function role() { return request.auth != null ? request.auth.token.get('role', null) : null; }
+    function isAdmin() { return role() == 'admin'; }
+    function isStaff() { return role() == 'admin' || role() == 'seller'; }
+
+    match /categories/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /products/{id} {
+      // Público solo ve activos; el personal ve todo. Solo el admin escribe (el vendedor no modifica precios).
+      allow read: if resource.data.active == true || isStaff();
+      allow create: if isAdmin() && validProduct(request.resource.data);
+      allow update: if isAdmin() && validProduct(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    function validProduct(d) {
+      return d.name is string && d.name.size() >= 3 && d.name.size() <= 120
+        && d.slug is string && d.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && d.kind in ['iphone', 'accessory']
+        && d.condition in ['new', 'used']
+        && d.active is bool
+        && d.variants is list && d.variants.size() >= 1 && d.variants.size() <= 40
+        && d.images is list && d.images.size() <= 8;
+    }
+
+    // Opiniones: lectura pública. Solo se crean desde el servidor tras un pedido entregado (compra verificada).
+    match /reviews/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Todo lo demás (pedidos, clientes, etc.) queda denegado hasta definir sus reglas en su etapa.
+    match /{document=**} { allow read, write: if false; }
+  }
+}
