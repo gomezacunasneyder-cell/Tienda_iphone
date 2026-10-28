@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
-import { ChevronsDown, RotateCcw } from 'lucide-react'
+import { ChevronsDown, Play, RotateCcw } from 'lucide-react'
 import { useInView } from '@/hooks/useInView'
 import { shouldAutoplayMedia, type VideoSource } from '@/lib/media'
 import { cn } from '@/lib/utils'
@@ -41,6 +41,27 @@ export interface StoryVideoProps {
 const SMOOTH_MS = 55
 
 /**
+ * En modo `scroll` cada cuadro es una búsqueda (seek) en el video. Si el video se pide por red, cada búsqueda puede
+ * esperar una descarga y el avance se ve lento. Aquí se baja completo a memoria (≈1,4 MB) y se reproduce desde ahí.
+ * Devuelve `undefined` mientras descarga, `null` si falló (se usa entonces la fuente normal) o la URL local.
+ */
+function useLocalVideoUrl(src: string | undefined, enabled: boolean): string | null | undefined {
+  const [state, setState] = useState<{ src: string; url: string | null }>()
+  useEffect(() => {
+    if (!enabled || !src) return
+    const ctrl = new AbortController()
+    let objectUrl: string | undefined
+    fetch(src, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((blob) => { objectUrl = URL.createObjectURL(blob); setState({ src, url: objectUrl }) })
+      .catch((e) => { if (e?.name !== 'AbortError') setState({ src, url: null }) })
+    return () => { ctrl.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [src, enabled])
+  if (!enabled || !src) return null
+  return state?.src === src ? state.url : undefined
+}
+
+/**
  * Video vertical tipo "historia": marco con borde neón, barra de progreso y destello al llegar al final.
  * - El póster ocupa el espacio desde el inicio (sin saltos de diseño); el video se monta la primera vez que entra
  *   en pantalla y aparece con un fundido cuando tiene imagen.
@@ -48,8 +69,12 @@ const SMOOTH_MS = 55
  * - Si ninguna fuente funciona, se queda el póster; si el póster falla, se usa `fallback`.
  */
 export function StoryVideo({ sources, poster, fallback, alt, ratio = '3 / 4', playback = 'auto', fps = 24, handle, loop = false, caption, children, className }: StoryVideoProps) {
-  const scroll = playback === 'scroll'
   const [wantVideo] = useState(shouldAutoplayMedia)
+  // Con "reducir movimiento" o ahorro de datos el video no se carga solo, pero la persona puede pedirlo con el botón ▶
+  const [forced, setForced] = useState(false)
+  // Si el navegador bloquea la reproducción automática (p. ej. modo de bajo consumo del iPhone) también se ofrece el botón ▶
+  const [blocked, setBlocked] = useState(false)
+  const scroll = playback === 'scroll' && wantVideo
   const { ref: wrapRef, inView, seen } = useInView<HTMLDivElement>()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [posterSrc, setPosterSrc] = useState(poster)
@@ -57,7 +82,9 @@ export function StoryVideo({ sources, poster, fallback, alt, ratio = '3 / 4', pl
   const [playing, setPlaying] = useState(false)
   const [ended, setEnded] = useState(false)
   const [failed, setFailed] = useState(false)
-  const showVideo = wantVideo && seen && !failed
+  const showVideo = (wantVideo || forced) && seen && !failed
+  const localSrc = useLocalVideoUrl(sources[0]?.src, scroll && showVideo)
+  const videoReady = showVideo && (!scroll || localSrc !== undefined)
 
   // ---- Modo scroll ----
   // El avance pedido se persigue con un suavizado basado en tiempo (igual en pantallas de 60 o 120 Hz).
@@ -108,9 +135,9 @@ export function StoryVideo({ sources, poster, fallback, alt, ratio = '3 / 4', pl
     if (!v || scroll) return
     if (inView) {
       if (v.ended) { v.currentTime = 0; setEnded(false) }
-      v.play().catch(() => { /* reproducción automática bloqueada: se queda el póster */ })
+      v.play().catch(() => setBlocked(true))
     } else v.pause()
-  }, [inView, showVideo, scroll])
+  }, [inView, videoReady, scroll])
 
   // Barra de progreso fluida en modo auto: se escribe directo en una variable CSS, sin volver a renderizar.
   useEffect(() => {
@@ -134,6 +161,12 @@ export function StoryVideo({ sources, poster, fallback, alt, ratio = '3 / 4', pl
     v.play().catch(() => {})
   }
 
+  const playNow = () => {
+    setBlocked(false)
+    if (!wantVideo) setForced(true)
+    videoRef.current?.play().catch(() => setBlocked(true))
+  }
+
   const onLoaded = () => {
     setReady(true)
     if (!scroll) return
@@ -152,16 +185,17 @@ export function StoryVideo({ sources, poster, fallback, alt, ratio = '3 / 4', pl
             onError={() => fallback && setPosterSrc((s) => (s === fallback ? s : fallback))}
             className="story-media"
           />
-          {showVideo ? (
+          {videoReady ? (
             <video
+              key={localSrc ?? 'red'} src={localSrc || undefined}
               ref={videoRef} muted playsInline autoPlay={!scroll} loop={loop && !scroll} preload="auto" disablePictureInPicture aria-hidden
-              onLoadedData={onLoaded} onSeeked={scroll ? applyFrame : undefined}
-              onPlaying={() => { if (!scroll) { setPlaying(true); setEnded(false) } }} onPause={() => setPlaying(false)}
+              onLoadedData={onLoaded} onSeeked={scroll ? applyFrame : undefined} onError={localSrc ? () => setFailed(true) : undefined}
+              onPlaying={() => { setReady(true); if (!scroll) { setPlaying(true); setEnded(false); setBlocked(false) } }} onPause={() => setPlaying(false)}
               onEnded={() => { if (!scroll) { setPlaying(false); setEnded(true) } }}
               className={cn('story-media story-video', ready && 'is-ready')}
             >
               {/* El error de un <source> no llega al <video>: se escucha en la última fuente. */}
-              {sources.map((s, i) => <source key={s.src} src={s.src} type={s.type} onError={i === sources.length - 1 ? () => setFailed(true) : undefined} />)}
+              {localSrc ? null : sources.map((s, i) => <source key={s.src} src={s.src} type={s.type} onError={i === sources.length - 1 ? () => setFailed(true) : undefined} />)}
             </video>
           ) : null}
           <span aria-hidden className="story-shade" />
@@ -169,6 +203,11 @@ export function StoryVideo({ sources, poster, fallback, alt, ratio = '3 / 4', pl
           <span aria-hidden className="story-flash" />
           {caption ? <span aria-hidden className="story-caption">{caption}</span> : null}
           {showVideo && scroll ? <span aria-hidden className="story-hint"><ChevronsDown className="size-4" />Desliza</span> : null}
+          {!scroll && (!(wantVideo || forced) || blocked) && !ended ? (
+            <button type="button" onClick={playNow} className="story-play" aria-label="Reproducir la animación de la mascota">
+              <Play className="size-5 translate-x-px" aria-hidden fill="currentColor" />
+            </button>
+          ) : null}
           {showVideo && !scroll ? (
             <button type="button" onClick={replay} className="story-replay" tabIndex={ended ? 0 : -1} aria-hidden={!ended}>
               <RotateCcw className="size-3.5" aria-hidden />Ver de nuevo

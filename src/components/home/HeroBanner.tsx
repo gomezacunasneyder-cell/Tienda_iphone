@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { ArrowRight, BadgeCheck, Truck, Wallet } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Mascot } from '@/components/brand/Mascot'
@@ -6,6 +6,7 @@ import { buttonClasses } from '@/components/ui/Button'
 import type { StoryVideoHandle } from '@/components/ui/StoryVideo'
 import { BRAND } from '@/config/brand'
 import { useScrollFrame } from '@/hooks/useScrollFrame'
+import { shouldScrubVideo } from '@/lib/media'
 
 const TRUST = [
   { icon: BadgeCheck, text: 'IMEI legal verificado' },
@@ -73,7 +74,8 @@ function useHeroScrub(enabled: boolean) {
 
 /** Banner principal: mensaje comercial y acciones a la izquierda; la mascota animada a la derecha. */
 export function HeroBanner() {
-  const scrub = BRAND.mascot.playback === 'scroll'
+  // Video ligado al scroll solo en escritorio; en celulares se reproduce solo al verse (más fluido y liviano)
+  const [scrub] = useState(() => BRAND.mascot.playback === 'scroll' && shouldScrubVideo())
   const { trackRef, heroRef, mascotRef, videoRef } = useHeroScrub(scrub)
 
   return (
@@ -99,7 +101,7 @@ export function HeroBanner() {
             </div>
           </div>
           <div ref={mascotRef}>
-            <Mascot handle={videoRef} className="mx-auto mt-4 max-w-[380px] sm:max-w-[440px] md:mt-0 md:max-w-[var(--mascot-max)]" />
+            <Mascot handle={videoRef} playback={scrub ? 'scroll' : 'auto'} className="mx-auto mt-4 max-w-[380px] sm:max-w-[440px] md:mt-0 md:max-w-[var(--mascot-max)]" />
           </div>
         </div>
       </section>

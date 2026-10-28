@@ -9,11 +9,11 @@ import { cn } from '@/lib/utils'
  * Mascota de CeluNorte en el banner: levanta el iPhone y se toma una selfie. Los archivos se configuran en `BRAND.mascot`.
  * Con `playback: 'scroll'`, quien la usa la mueve con `handle.seek()` (ver HeroBanner).
  */
-export function Mascot({ className, handle }: { className?: string; handle?: Ref<StoryVideoHandle> }) {
-  const { sources, poster, fallback, ratio, loop, playback, fps } = BRAND.mascot
+export function Mascot({ className, handle, playback }: { className?: string; handle?: Ref<StoryVideoHandle>; playback?: 'auto' | 'scroll' }) {
+  const { sources, poster, fallback, ratio, loop, fps, playback: defaultPlayback } = BRAND.mascot
   return (
     <StoryVideo
-      sources={sources} poster={poster} fallback={fallback} ratio={ratio} loop={loop} playback={playback} fps={fps} handle={handle}
+      sources={sources} poster={poster} fallback={fallback} ratio={ratio} loop={loop} playback={playback ?? defaultPlayback} fps={fps} handle={handle}
       alt="Mascota de CeluNorte tomándose una selfie con su iPhone"
       caption={<><img src={asset("/brand/mark-96.webp")} alt="" width={20} height={20} className="size-5 rounded-full" />@{BRAND.name.toLowerCase()}</>}
       className={cn('mascot', className)}

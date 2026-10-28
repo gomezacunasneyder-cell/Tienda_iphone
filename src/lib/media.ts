@@ -16,3 +16,15 @@ export function shouldAutoplayMedia(): boolean {
     return false
   }
 }
+
+/**
+ * El video ligado al scroll solo se usa en pantallas grandes con puntero fino (mouse) y sin ahorro de movimiento ni de datos.
+ * En celulares y tabletas buscar un cuadro del video en cada gesto es lento: ahí el video se reproduce solo al verse.
+ */
+export function shouldScrubVideo(): boolean {
+  try {
+    return matchMedia('(min-width: 768px) and (pointer: fine)').matches && shouldAutoplayMedia()
+  } catch {
+    return false
+  }
+}

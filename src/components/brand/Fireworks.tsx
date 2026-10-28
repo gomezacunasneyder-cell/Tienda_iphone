@@ -25,7 +25,7 @@ export function Fireworks({ onDone, durationMs = 2600, className }: { onDone?: (
     if (!canvas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onDone?.(); return }
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.5 : 2)
     let w = 0, h = 0
     const resize = () => {
       w = canvas.clientWidth; h = canvas.clientHeight
